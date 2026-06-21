@@ -1,0 +1,312 @@
+# Router-on-a-Stick and DHCP Troubleshooting
+
+## Problem Faced
+
+After configuring VLANs, trunking, and EtherChannel, PCs were still unable to receive IP addresses automatically through DHCP.
+
+The PCs were getting:
+
+```bash id="b3u7pz"
+169.254.x.x
+```
+
+This indicated that DHCP was failing.
+
+---
+
+# Initial Symptoms
+
+While checking the router interfaces using:
+
+```bash id="w9q2er"
+show ip interface brief
+```
+
+The output showed:
+
+```bash id="m5k1xt"
+FastEthernet0/0        up      down
+FastEthernet0/0.10     up      down
+FastEthernet0/0.20     up      down
+FastEthernet0/0.30     up      down
+FastEthernet0/0.40     up      down
+```
+
+This meant:
+
+* Physical interface status was UP
+* Protocol status was DOWN
+* VLAN communication was failing
+
+As a result:
+
+* DHCP requests were not reaching the router
+* Inter-VLAN communication was not working
+
+---
+
+# Root Cause Analysis
+
+The issue happened because Router-on-a-Stick was configured on the WRONG interface.
+
+The router cable was actually connected to:
+
+```bash id="t8v4qp"
+FastEthernet0/1
+```
+
+But subinterfaces were mistakenly configured on:
+
+```bash id="r2m9kx"
+FastEthernet0/0
+```
+
+Because of this mismatch:
+
+* Router subinterfaces stayed down
+* VLAN tagging failed
+* DHCP broadcasts could not pass through
+
+---
+
+# Troubleshooting Process
+
+## Step 1 — Verified Active Router Interface
+
+Used command:
+
+```bash id="x4n7tw"
+show ip interface brief
+```
+
+This helped identify:
+
+* Active connected interface
+* Interface status
+* Protocol status
+
+The correct working interface was:
+
+```bash id="v1q8mz"
+FastEthernet0/1
+```
+
+---
+
+# Step 2 — Removed Wrong Subinterfaces
+
+Removed incorrect configurations from FastEthernet0/0:
+
+```bash id="d7m2qp"
+configure terminal
+no interface fa0/0.10
+no interface fa0/0.20
+no interface fa0/0.30
+no interface fa0/0.40
+```
+
+---
+
+# Step 3 — Configured Correct Router-on-a-Stick Interface
+
+Configured subinterfaces on the correct interface:
+
+```bash id="g5v9kr"
+interface fa0/1
+no shutdown
+```
+
+---
+
+# VLAN 10 Configuration
+
+```bash id="p3m8tx"
+interface fa0/1.10
+encapsulation dot1Q 10
+ip address 192.168.10.1 255.255.255.0
+```
+
+---
+
+# VLAN 20 Configuration
+
+```bash id="u6q1mw"
+interface fa0/1.20
+encapsulation dot1Q 20
+ip address 192.168.20.1 255.255.255.0
+```
+
+---
+
+# VLAN 30 Configuration
+
+```bash id="y2v7np"
+interface fa0/1.30
+encapsulation dot1Q 30
+ip address 192.168.30.1 255.255.255.0
+```
+
+---
+
+# VLAN 40 Configuration
+
+```bash id="c8m4qz"
+interface fa0/1.40
+encapsulation dot1Q 40
+ip address 192.168.40.1 255.255.255.0
+```
+
+---
+
+# Step 4 — Configured Trunk on Switch Port
+
+The switch port connected to the router was configured as trunk:
+
+```bash id="n4v8xt"
+interface fa0/24
+switchport mode trunk
+```
+
+This allowed VLAN traffic to pass between:
+
+* Switch
+* Router
+
+---
+
+# Step 5 — Verification
+
+After correcting the interface configuration:
+
+```bash id="z7q2mr"
+show ip interface brief
+```
+
+Now showed:
+
+```bash id="m1v5kp"
+FastEthernet0/1.10     up     up
+FastEthernet0/1.20     up     up
+FastEthernet0/1.30     up     up
+FastEthernet0/1.40     up     up
+```
+
+This confirmed:
+
+* Router-on-a-Stick was functioning correctly
+* VLAN tagging was operational
+* Inter-VLAN routing was active
+
+---
+
+# DHCP Problem
+
+Even after Router-on-a-Stick started working, PCs still failed to obtain IP addresses.
+
+---
+
+# Root Cause
+
+Only excluded addresses were configured:
+
+```bash id="u3m9qx"
+ip dhcp excluded-address 192.168.10.1
+ip dhcp excluded-address 192.168.20.1
+ip dhcp excluded-address 192.168.30.1
+ip dhcp excluded-address 192.168.40.1
+```
+
+But actual DHCP pools were missing.
+
+Without DHCP pools:
+
+* Router had no IP ranges to assign
+* PCs continued receiving APIPA addresses (`169.254.x.x`)
+
+---
+
+# DHCP Solution
+
+Configured DHCP pools for each VLAN.
+
+---
+
+# VLAN10 DHCP Pool
+
+```bash id="x8q4nt"
+ip dhcp pool VLAN10
+network 192.168.10.0 255.255.255.0
+default-router 192.168.10.1
+dns-server 8.8.8.8
+```
+
+---
+
+# VLAN20 DHCP Pool
+
+```bash id="k2v7mp"
+ip dhcp pool VLAN20
+network 192.168.20.0 255.255.255.0
+default-router 192.168.20.1
+dns-server 8.8.8.8
+```
+
+---
+
+# VLAN30 DHCP Pool
+
+```bash id="w5m1qz"
+ip dhcp pool VLAN30
+network 192.168.30.0 255.255.255.0
+default-router 192.168.30.1
+dns-server 8.8.8.8
+```
+
+---
+
+# VLAN40 DHCP Pool
+
+```bash id="n9v3kr"
+ip dhcp pool VLAN40
+network 192.168.40.0 255.255.255.0
+default-router 192.168.40.1
+dns-server 8.8.8.8
+```
+
+---
+
+# Final Verification
+
+After configuring DHCP pools:
+
+* PCs successfully received IP addresses
+* Inter-VLAN communication worked
+* Default gateways were assigned automatically
+
+Verification command:
+
+```bash id="q4m8tx"
+show ip dhcp binding
+```
+
+Successfully displayed dynamically assigned IP addresses.
+
+---
+
+# Final Outcome
+
+Successfully implemented:
+
+* Router-on-a-Stick
+* Inter-VLAN Routing
+* DHCP for multiple VLANs
+* Automatic IP allocation
+* VLAN communication through trunk links
+
+This troubleshooting process improved understanding of:
+
+* Subinterfaces
+* dot1Q encapsulation
+* DHCP operation
+* VLAN routing
+* Cisco interface troubleshooting
